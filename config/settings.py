@@ -17,7 +17,7 @@ class Settings(BaseSettings):
     football_api_base_url: str = "https://v3.football.api-sports.io"
 
     # Database
-    database_url: str = "sqlite:///./data/worldcup.db"
+    database_url: str = "postgresql://postgres:postgres@localhost:5432/worldcup"
 
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
 

@@ -1,15 +1,32 @@
 services:
+  postgres:
+    image: postgres:16-alpine
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=worldcup
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
   mcp-server:
     build:
       context: .
       dockerfile: mcp_server/Dockerfile
     ports:
       - "8000:8000"
-    volumes:
-      - ./data:/data
     environment:
       - FOOTBALL_API_KEY=${FOOTBALL_API_KEY:-}
-      - DATABASE_URL=sqlite:////data/worldcup.db
+      - DATABASE_URL=postgresql://postgres:postgres@postgres:5432/worldcup
+    depends_on:
+      postgres:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "python", "-c", "import httpx; httpx.get('http://localhost:8000/mcp/')"]
       interval: 10s
@@ -37,13 +54,11 @@ services:
       dockerfile: dashboard/Dockerfile
     ports:
       - "8501:8501"
-    volumes:
-      - ./data:/data
     environment:
-      - DATABASE_URL=sqlite:////data/worldcup.db
+      - DATABASE_URL=postgresql://postgres:postgres@postgres:5432/worldcup
     depends_on:
-      mcp-server:
+      postgres:
         condition: service_healthy
 
 volumes:
-  data:
+  pgdata:

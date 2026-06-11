@@ -2,9 +2,8 @@
 
 import os
 from contextlib import contextmanager
-from pathlib import Path
 
-from sqlalchemy import create_engine, event
+from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 
 from shared.db.models import Base
@@ -17,21 +16,10 @@ def get_engine(database_url: str | None = None):
     """Create or return the singleton engine."""
     global _engine
     if _engine is None:
-        url = database_url or os.environ.get("DATABASE_URL", "sqlite:///./data/worldcup.db")
-        # Ensure directory exists for SQLite
-        if url.startswith("sqlite"):
-            db_path = url.replace("sqlite:///", "").replace("sqlite:////", "/")
-            Path(db_path).parent.mkdir(parents=True, exist_ok=True)
-
-        _engine = create_engine(url, echo=False, connect_args={"check_same_thread": False})
-
-        # Set journal_mode=DELETE for Azure Files compatibility
-        @event.listens_for(_engine, "connect")
-        def set_sqlite_pragma(dbapi_connection, connection_record):
-            cursor = dbapi_connection.cursor()
-            cursor.execute("PRAGMA journal_mode=DELETE")
-            cursor.execute("PRAGMA busy_timeout=5000")
-            cursor.close()
+        url = database_url or os.environ.get(
+            "DATABASE_URL", "postgresql://postgres:postgres@localhost:5432/worldcup"
+        )
+        _engine = create_engine(url, echo=False, pool_pre_ping=True)
 
     return _engine
 

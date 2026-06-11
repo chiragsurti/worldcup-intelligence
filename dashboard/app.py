@@ -12,12 +12,12 @@ from sqlalchemy import create_engine, text
 # Add project root to path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-DATABASE_URL = os.environ.get("DATABASE_URL", "sqlite:///./data/worldcup.db")
+DATABASE_URL = os.environ.get("DATABASE_URL", "postgresql://postgres:postgres@localhost:5432/worldcup")
 
 
 @st.cache_resource
 def get_db_engine():
-    return create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
+    return create_engine(DATABASE_URL)
 
 
 def load_table(table_name: str, where_clause: str = "") -> pd.DataFrame:

@@ -61,13 +61,13 @@ graph TB
     end
 
     subgraph STORAGE["Shared Storage"]
-        DB[("SQLite (local dev)\n./data/worldcup.db\n────────────────\nAzure Files mount (Azure)\n/data/worldcup.db\njournalmode=DELETE\n────────────────\n📋 fixtures\n🔎 audit_claims\n🃏 prediction_cards\n📦 media_packs")]
+        DB[("PostgreSQL\nworldcup database\n────────────────\n📋 fixtures\n🔎 audit_claims\n🃏 prediction_cards\n📦 media_packs")]
     end
 
     subgraph INFRA["Azure Infrastructure (azd up)"]
-        ACA["Azure Container Apps\n3 services, same environment\nall single-replica"]
+        ACA["Azure Container Apps\n3 services, same environment"]
         ACR["Azure Container Registry\n(image build via ACR Tasks)"]
-        AFS["Azure Files Share\n(persistent volume mount)"]
+        PG_SVC["Azure Database for PostgreSQL\nFlexible Server"]
         AI["Application Insights\nOpenTelemetry tracing"]
     end
 
@@ -107,7 +107,7 @@ sequenceDiagram
     participant FootballAPI as ⚽ API-Football v3
     participant FC as 🔍 Fact-Checker Agent
     participant Toolbox as 🔍 Foundry Toolbox<br/>(web_search)
-    participant SQLite as 🗃️ SQLite DB
+    participant PG as 🗃️ PostgreSQL DB
     participant Tac as 📊 Tactician Agent
     participant Scribe as ✍️ Scribe Agent
     participant Dashboard as 🖥️ Streamlit :8501
@@ -120,7 +120,7 @@ sequenceDiagram
         Scout->>MCP: get_schedule("2026-06-10")
         MCP->>FootballAPI: GET /fixtures?date=2026-06-10
         FootballAPI-->>MCP: fixtures JSON (teams, venue, kickoff)
-        MCP->>SQLite: UPSERT fixtures
+        MCP->>PG: UPSERT fixtures
         MCP-->>Scout: fixtures list
         Scout->>MCP: get_historical_trends(team_id=X)
         MCP->>FootballAPI: GET /teams/statistics?team=X&season=2026
@@ -135,7 +135,7 @@ sequenceDiagram
         FC->>Toolbox: web_search("Brazil injury news World Cup June 2026")
         Toolbox-->>FC: grounded results + inline citations
         FC->>MCP: ground_and_audit_claim(<br/>  claim_text, citations[],<br/>  status="Confirmed", confidence=0.92,<br/>  entity_mappings={wikidata_id, api_id})
-        MCP->>SQLite: INSERT audit_claims
+        MCP->>PG: INSERT audit_claims
         MCP-->>FC: audit record id
         FC-->>HA: Verified claims bundle<br/>(Confirmed/Reported/Unverified tags)
     end
@@ -151,10 +151,10 @@ sequenceDiagram
         Note over HA,Scribe: Stage 4 — Scribe Agent (content generation)
         HA->>Scribe: Invoke with Tactician prediction card
         Scribe->>MCP: save_prediction_card(<br/>  match_id, probabilities, reasoning)
-        MCP->>SQLite: INSERT prediction_cards
+        MCP->>PG: INSERT prediction_cards
         Note over Scribe: Formats email-ready content<br/>Drafts 5-tweet social thread
         Scribe->>MCP: save_media_pack(<br/>  match_id, email_html, social_threads)
-        MCP->>SQLite: INSERT media_packs
+        MCP->>PG: INSERT media_packs
         MCP-->>Scribe: saved OK
         Scribe-->>HA: Final briefing (streamed to user)
     end
@@ -163,8 +163,8 @@ sequenceDiagram
 
     Note over User,Dashboard: Dashboard reads persisted data at any time
     User->>Dashboard: Open browser → localhost:8501
-    Dashboard->>SQLite: SELECT from fixtures, prediction_cards,<br/>audit_claims, media_packs WHERE date=today
-    SQLite-->>Dashboard: All stored data
+    Dashboard->>PG: SELECT from fixtures, prediction_cards,<br/>audit_claims, media_packs WHERE date=today
+    PG-->>Dashboard: All stored data
     Dashboard-->>User: 4-page interactive dashboard<br/>Schedule / Predictions / Audit Trail / Media Pack
 ```
 
@@ -361,7 +361,7 @@ erDiagram
 
 - **`config/settings.py`** — Pydantic `BaseSettings` loading all secrets from env vars
 - **`shared/db/models.py`** — SQLAlchemy ORM tables: `fixtures`, `audit_claims`, `prediction_cards`, `media_packs`
-- **`shared/db/database.py`** — engine factory (with `journal_mode=DELETE` pragma for Azure Files compatibility), session context manager, `create_all()`
+- **`shared/db/database.py`** — engine factory with `pool_pre_ping=True`, session context manager, `create_all()`
 - **`mcp_server/clients/football_api.py`** — async `httpx` client; auth via `x-apisports-key` header; respects `x-ratelimit-requests-remaining`; methods: `get_fixtures`, `get_standings`, `get_player_stats`, `get_team_stats`
 
 ### Phase 2 — MCP Server
@@ -400,7 +400,7 @@ Reference: [05-workflows](https://github.com/microsoft-foundry/foundry-samples/t
 
 ### Phase 4 — Dashboard + Email
 
-- **`dashboard/app.py`** — Streamlit 4-page app reading SQLite directly (read-only):
+- **`dashboard/app.py`** — Streamlit 4-page app reading PostgreSQL directly (read-only):
   - **Schedule**: today's fixtures from `fixtures` table
   - **Predictions**: expandable cards (probabilities, reasoning) from `prediction_cards`
   - **Audit Trail**: `audit_claims` table with Confirmed/Reported/Unverified badges, confidence score, citation expander
@@ -409,7 +409,7 @@ Reference: [05-workflows](https://github.com/microsoft-foundry/foundry-samples/t
 
 ### Phase 5 — Infrastructure
 
-- **`docker-compose.yml`** — 3 services: `mcp-server` (8000), `agent` (8088), `dashboard` (8501); shared `./data` volume for SQLite
+- **`docker-compose.yml`** — 4 services: `postgres` (5432), `mcp-server` (8000), `agent` (8088), `dashboard` (8501)
 - **`azure.yaml`** — `azd` project file declaring all 3 services as Azure Container Apps in same environment
 - **`.env.example`** — all required env vars documented with descriptions
 
@@ -424,7 +424,7 @@ Reference: [05-workflows](https://github.com/microsoft-foundry/foundry-samples/t
 | `FOUNDRY_TOOLBOX_ENDPOINT` | agent | Foundry Toolbox MCP endpoint (provisioned by `azd provision`) |
 | `MCP_SERVER_URL` | agent | Custom MCP server (`http://mcp-server:8000/mcp/` in Compose) |
 | `FOOTBALL_API_KEY` | mcp_server | API-Football v3 key (`x-apisports-key` header) |
-| `DATABASE_URL` | mcp_server, dashboard | SQLite path (`sqlite:////data/worldcup.db`) |
+| `DATABASE_URL` | mcp_server, dashboard | PostgreSQL connection string (`postgresql://postgres:postgres@postgres:5432/worldcup`) |
 
 ---
 
@@ -437,8 +437,7 @@ Reference: [05-workflows](https://github.com/microsoft-foundry/foundry-samples/t
 | Web search grounding | Foundry Toolbox `web_search` via `MCPStreamableHTTPTool` | Platform-managed citations; no manual Bing resource; declared in manifest |
 | Tool scoping per agent | System prompt enforcement | `client.get_mcp_tool()` gives access to all MCP server tools; restrict via instruction ("only use X, Y tools") |
 | Agent context passing | `context_mode="last_agent"` | Prevents context bloat; each agent only sees prior output; keeps token usage low |
-| Storage (local) | SQLite in shared Docker volume | Zero-infra; instant setup; single-writer architecture (MCP server writes, dashboard reads) |
-| Storage (Azure) | SQLite on Azure Files mount (`journal_mode=DELETE`) | Works for single-replica hackathon demo; all Container Apps scaled to max 1 replica |
+| Storage | PostgreSQL (Docker container locally, Azure Database for PostgreSQL Flexible Server on Azure) | ACID-compliant; concurrent access; no file-locking issues; production-grade |
 | Email delivery | Jinja2 HTML render → `media_packs.email_html` field | No SMTP infrastructure required; preview in Streamlit |
 | Deployment | `azd up` (single command) | Auto-provisions ACR, Container Apps, Foundry Toolbox, App Insights |
 
@@ -455,7 +454,7 @@ graph LR
     end
 
     subgraph STORAGE["Shared Storage"]
-        AFS["Azure Files Share\n'worldcup-data'\nMounted at /data"]
+        PG_AZ["Azure Database for PostgreSQL\nFlexible Server\n'worldcup' database"]
     end
 
     subgraph MANAGED["Azure Managed Services"]
@@ -466,8 +465,8 @@ graph LR
     end
 
     A1 -->|"internal URL"| A2
-    A3 -->|"reads /data/worldcup.db"| AFS
-    A2 -->|"writes /data/worldcup.db"| AFS
+    A3 -->|"reads from PostgreSQL"| PG_AZ
+    A2 -->|"writes to PostgreSQL"| PG_AZ
     A1 --> FOUNDRY
     A1 --> TOOLBOX
     ACA_ENV --> ACR2
@@ -475,11 +474,10 @@ graph LR
 ```
 
 **Key constraints for Azure deployment:**
-- All 3 Container Apps set to **max 1 replica** (SQLite single-writer safety)
 - MCP server ingress: **internal only** (not exposed to internet)
 - Agent + Dashboard ingress: **external** (public-facing)
-- Azure Files share mounted as persistent volume at `/data` on mcp-server and dashboard containers
-- Agent container does NOT mount the volume (accesses data only through MCP tools)
+- PostgreSQL Flexible Server accessible from Container Apps via private networking
+- Agent container accesses data only through MCP tools
 
 ---
 
@@ -504,9 +502,9 @@ graph LR
 | 3 | Football API integration | `pytest tests/test_football_api.py` | Mock responses parsed correctly |
 | 4 | Agent starts locally | `cd agent && azd ai agent run` | Host on `http://localhost:8088` |
 | 5 | Agent invocation | `azd ai agent invoke --local "Analyze World Cup matches for 2026-06-11"` | Streamed response with prediction card |
-| 6 | SQLite populated | `sqlite3 ./data/worldcup.db "SELECT count(*) FROM prediction_cards"` | ≥ 1 row after agent run |
+| 6 | PostgreSQL populated | `psql -h localhost -U postgres -d worldcup -c "SELECT count(*) FROM prediction_cards"` | ≥ 1 row after agent run |
 | 7 | Dashboard renders | `cd dashboard && streamlit run app.py` | All 4 pages load at `localhost:8501` |
-| 8 | Docker Compose E2E | `docker compose up` | All 3 services healthy; dashboard shows data |
+| 8 | Docker Compose E2E | `docker compose up` | All 4 services healthy; dashboard shows data |
 | 9 | Azure deploy | `azd up` | 3 Container Apps running; `azd ai agent invoke` returns response |
 | 10 | Agent Inspector | VS Code → Foundry Toolkit → Open Agent Inspector | Multi-turn conversation works |
 
@@ -518,7 +516,7 @@ graph LR
 |---|---|---|
 | API-Football lacks WC2026 data before tournament starts | No live fixture data | Pre-seeded JSON fallback (`fixtures_seed.json`); switch to live API on June 11 |
 | `agent-framework-foundry-hosting` is alpha (1.0.0a) | Breaking API changes possible | Pin exact version in `requirements.txt`; keep implementation close to official samples |
-| SQLite corruption on Azure Files (SMB locking) | Lost data | `journal_mode=DELETE`; single-replica; MCP server is sole writer; dashboard reads with `timeout=30` |
+| PostgreSQL connection failure | Services can't start | Docker healthcheck with `pg_isready`; `depends_on` condition ensures DB is ready before app services start |
 | Foundry Toolbox `web_search` not provisioned | Fact-Checker can't ground claims | Declare in `agent.manifest.yaml`; auto-provisioned by `azd provision`; manual fallback in Foundry portal |
 | MCP tool scoping not enforced at SDK level | Agent calls wrong tools | Strong system prompts with explicit "ONLY use these tools" instructions; won't cause failures, just suboptimal routing |
 | GPT-4o struggles with `context_mode="last_agent"` chaining | Agents lose context from earlier stages | Test with GPT-4o first; fall back to `context_mode="all"` if needed (higher token cost); sample README recommends advanced model |
@@ -541,7 +539,7 @@ pydantic-settings
 mcp[server]
 httpx
 sqlalchemy
-aiosqlite
+psycopg2-binary
 pydantic-settings
 ```
 
@@ -549,6 +547,7 @@ pydantic-settings
 ```
 streamlit
 sqlalchemy
+psycopg2-binary
 pandas
 ```
 
@@ -560,7 +559,7 @@ pandas
 |---|---|
 | MCP tool scoping per agent | `client.get_mcp_tool()` gives access to ALL tools on the server. **Resolution:** Use system prompt enforcement per agent (e.g., "You MUST only use: get_schedule, get_historical_trends"). This is standard practice in the sample repos. |
 | BingGroundingTool availability | `BingGroundingTool` does NOT exist in Agent Framework. **Resolution:** Use Foundry Toolbox `web_search` via `MCPStreamableHTTPTool` (sample 04 pattern). Declared in `agent.manifest.yaml` and auto-provisioned by `azd provision`. |
-| SQLite on Azure Container Apps | Container Apps are stateless. **Resolution:** Mount Azure Files share as persistent volume; set `journal_mode=DELETE`; enforce single-replica (max 1) on all containers. MCP server is sole writer; dashboard reads only. Confirmed feasible per Azure docs. |
+| PostgreSQL on Azure Container Apps | Container Apps are stateless. **Resolution:** Use Azure Database for PostgreSQL Flexible Server; connect from Container Apps via connection string in env var. No file mounts needed. |
 | World Cup 2026 data availability | Tournament starts June 11, 2026. **Resolution:** Pre-seed `fixtures_seed.json` with known group stage matches for development. Switch to live API-Football on tournament day 1. |
 
 ---

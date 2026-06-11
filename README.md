@@ -65,13 +65,13 @@ graph TB
     end
 
     subgraph STORAGE["Shared Storage"]
-        DB[("SQLite (local dev)\n./data/worldcup.db\n────────────────\nAzure Files mount (Azure)\n/data/worldcup.db\njournalmode=DELETE\n────────────────\n📋 fixtures\n🔎 audit_claims\n🃏 prediction_cards\n📦 media_packs")]
+        DB[("PostgreSQL\nworldcup database\n────────────────\n📋 fixtures\n🔎 audit_claims\n🃏 prediction_cards\n📦 media_packs")]
     end
 
     subgraph INFRA["Azure Infrastructure (azd up)"]
-        ACA["Azure Container Apps\n3 services, same environment\nall single-replica"]
+        ACA["Azure Container Apps\n3 services, same environment"]
         ACR["Azure Container Registry\n(image build via ACR Tasks)"]
-        AFS["Azure Files Share\n(persistent volume mount)"]
+        PG_SVC["Azure Database for PostgreSQL\nFlexible Server"]
         AI["Application Insights\nOpenTelemetry tracing"]
     end
 
@@ -94,7 +94,7 @@ graph TB
     MCP_SERVER -.->|"deployed as container"| ACA
     UI -.->|"deployed as container"| ACA
     ACA -.-> ACR
-    ACA -.-> AFS
+    ACA -.-> PG_SVC
     ACA -.-> AI
 ```
 
@@ -109,7 +109,7 @@ sequenceDiagram
     participant FootballAPI as ⚽ API-Football v3
     participant FC as 🔍 Fact-Checker Agent
     participant Toolbox as 🔍 Foundry Toolbox<br/>(web_search)
-    participant SQLite as 🗃️ SQLite DB
+    participant PG as 🗃️ PostgreSQL DB
     participant Tac as 📊 Tactician Agent
     participant Scribe as ✍️ Scribe Agent
     participant Dashboard as 🖥️ Streamlit :8501
@@ -122,7 +122,7 @@ sequenceDiagram
         Scout->>MCP: get_schedule("2026-06-10")
         MCP->>FootballAPI: GET /fixtures?date=2026-06-10
         FootballAPI-->>MCP: fixtures JSON (teams, venue, kickoff)
-        MCP->>SQLite: UPSERT fixtures
+        MCP->>PG: UPSERT fixtures
         MCP-->>Scout: fixtures list
         Scout->>MCP: get_historical_trends(team_id=X)
         MCP->>FootballAPI: GET /teams/statistics?team=X&season=2026
@@ -137,7 +137,7 @@ sequenceDiagram
         FC->>Toolbox: web_search("Brazil injury news World Cup June 2026")
         Toolbox-->>FC: grounded results + inline citations
         FC->>MCP: ground_and_audit_claim(<br/>  claim_text, citations[],<br/>  status="Confirmed", confidence=0.92,<br/>  entity_mappings={wikidata_id, api_id})
-        MCP->>SQLite: INSERT audit_claims
+        MCP->>PG: INSERT audit_claims
         MCP-->>FC: audit record id
         FC-->>HA: Verified claims bundle<br/>(Confirmed/Reported/Unverified tags)
     end
@@ -153,10 +153,10 @@ sequenceDiagram
         Note over HA,Scribe: Stage 4 — Scribe Agent (content generation)
         HA->>Scribe: Invoke with Tactician prediction card
         Scribe->>MCP: save_prediction_card(<br/>  match_id, probabilities, reasoning)
-        MCP->>SQLite: INSERT prediction_cards
+        MCP->>PG: INSERT prediction_cards
         Note over Scribe: Formats email-ready content<br/>Drafts 5-tweet social thread
         Scribe->>MCP: save_media_pack(<br/>  match_id, email_html, social_threads)
-        MCP->>SQLite: INSERT media_packs
+        MCP->>PG: INSERT media_packs
         MCP-->>Scribe: saved OK
         Scribe-->>HA: Final briefing (streamed to user)
     end
@@ -165,8 +165,8 @@ sequenceDiagram
 
     Note over User,Dashboard: Dashboard reads persisted data at any time
     User->>Dashboard: Open browser → localhost:8501
-    Dashboard->>SQLite: SELECT from fixtures, prediction_cards,<br/>audit_claims, media_packs WHERE date=today
-    SQLite-->>Dashboard: All stored data
+    Dashboard->>PG: SELECT from fixtures, prediction_cards,<br/>audit_claims, media_packs WHERE date=today
+    PG-->>Dashboard: All stored data
     Dashboard-->>User: 4-page interactive dashboard<br/>Schedule / Predictions / Audit Trail / Media Pack
 ```
 
@@ -230,8 +230,7 @@ erDiagram
 | MCP tool server | Separate container (FastMCP, port 8000) | Preserves protocol boundary; independently testable |
 | Web search grounding | Foundry Toolbox `web_search` via `MCPStreamableHTTPTool` | Platform-managed citations; no manual Bing resource |
 | Agent context passing | `context_mode="last_agent"` | Prevents context bloat; each agent only sees prior output |
-| Storage (local) | SQLite in shared Docker volume | Zero-infra; instant setup; single-writer architecture |
-| Storage (Azure) | SQLite on Azure Files mount (`journal_mode=DELETE`) | Works for single-replica hackathon demo |
+| Storage | PostgreSQL (Docker container locally, Azure Database for PostgreSQL on Azure) | ACID-compliant; concurrent access; no file-locking issues |
 | Deployment | `azd up` (single command) | Auto-provisions ACR, Container Apps, Foundry Toolbox, App Insights |
 
 ### Azure Deployment Architecture
@@ -245,7 +244,7 @@ graph LR
     end
 
     subgraph STORAGE["Shared Storage"]
-        AFS["Azure Files Share\n'worldcup-data'\nMounted at /data"]
+        PG_AZ["Azure Database for PostgreSQL\nFlexible Server\n'worldcup' database"]
     end
 
     subgraph MANAGED["Azure Managed Services"]
@@ -256,8 +255,8 @@ graph LR
     end
 
     A1 -->|"internal URL"| A2
-    A3 -->|"reads /data/worldcup.db"| AFS
-    A2 -->|"writes /data/worldcup.db"| AFS
+    A3 -->|"reads from PostgreSQL"| PG_AZ
+    A2 -->|"writes to PostgreSQL"| PG_AZ
     A1 --> FOUNDRY
     A1 --> TOOLBOX
     ACA_ENV --> ACR2
@@ -298,7 +297,7 @@ graph LR
    docker-compose up --build
    ```
 
-   This starts the MCP server, agent, and dashboard containers.
+   This starts the PostgreSQL database, MCP server, agent, and dashboard containers.
 
 4. **Access the dashboard**
 
@@ -318,7 +317,7 @@ graph LR
 azd up
 ```
 
-This provisions Azure Container Apps, Azure Container Registry, Azure Files (shared SQLite volume), and Application Insights via the `azure.yaml` configuration.
+This provisions Azure Container Apps, Azure Container Registry, Azure Database for PostgreSQL, and Application Insights via the `azure.yaml` configuration.
 
 ## Project Structure
 
@@ -330,7 +329,7 @@ This provisions Azure Container Apps, Azure Container Registry, Azure Files (sha
 ├── dashboard/          # Streamlit 4-page analytics app
 ├── shared/             # Shared DB models, Jinja2 email templates
 ├── config/             # Settings (pydantic-settings)
-├── data/               # SQLite database (local dev volume)
+├── data/               # Local data files
 ├── tests/              # Unit tests
 ├── azure.yaml          # Azure Developer CLI manifest
 └── docker-compose.yml  # Local orchestration
