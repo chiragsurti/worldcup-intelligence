@@ -1,0 +1,49 @@
+services:
+  mcp-server:
+    build:
+      context: .
+      dockerfile: mcp_server/Dockerfile
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./data:/data
+    environment:
+      - FOOTBALL_API_KEY=${FOOTBALL_API_KEY:-}
+      - DATABASE_URL=sqlite:////data/worldcup.db
+    healthcheck:
+      test: ["CMD", "python", "-c", "import httpx; httpx.get('http://localhost:8000/mcp/')"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  agent:
+    build:
+      context: .
+      dockerfile: agent/Dockerfile
+    ports:
+      - "8088:8088"
+    environment:
+      - FOUNDRY_PROJECT_ENDPOINT=${FOUNDRY_PROJECT_ENDPOINT:-}
+      - AZURE_AI_MODEL_DEPLOYMENT_NAME=${AZURE_AI_MODEL_DEPLOYMENT_NAME:-gpt-4o}
+      - FOUNDRY_TOOLBOX_ENDPOINT=${FOUNDRY_TOOLBOX_ENDPOINT:-}
+      - MCP_SERVER_URL=http://mcp-server:8000/mcp/
+    depends_on:
+      mcp-server:
+        condition: service_healthy
+
+  dashboard:
+    build:
+      context: .
+      dockerfile: dashboard/Dockerfile
+    ports:
+      - "8501:8501"
+    volumes:
+      - ./data:/data
+    environment:
+      - DATABASE_URL=sqlite:////data/worldcup.db
+    depends_on:
+      mcp-server:
+        condition: service_healthy
+
+volumes:
+  data:

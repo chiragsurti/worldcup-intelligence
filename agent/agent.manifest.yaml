@@ -1,0 +1,15 @@
+name: worldcup-intelligence
+description: AI-powered World Cup 2026 pre-match briefings with multi-agent analysis pipeline.
+version: "1.0.0"
+runtime:
+  language: python
+  entrypoint: main.py
+  port: 8088
+model:
+  deployment: gpt-4o
+  sku: GlobalStandard
+resources:
+  - kind: toolbox
+    name: worldcup-tools
+    tools:
+      - type: web_search

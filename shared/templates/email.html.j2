@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>⚽ World Cup 2026 Pre-Match Briefing</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; margin: 0; padding: 20px; background: #f8f9fa; }
+    .container { max-width: 600px; margin: 0 auto; background: #fff; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+    .header { background: linear-gradient(135deg, #1a1a2e, #16213e); color: #fff; padding: 24px; text-align: center; }
+    .header h1 { margin: 0; font-size: 20px; }
+    .header .date { color: #a0a0c0; font-size: 14px; margin-top: 4px; }
+    .match-card { padding: 20px; border-bottom: 1px solid #eee; }
+    .teams { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+    .team { text-align: center; flex: 1; }
+    .team-name { font-weight: 700; font-size: 16px; }
+    .vs { color: #999; font-weight: 300; font-size: 14px; }
+    .venue { text-align: center; color: #666; font-size: 12px; margin-bottom: 16px; }
+    .prediction { background: #f0f4ff; border-radius: 6px; padding: 12px; margin-bottom: 12px; }
+    .prediction h3 { margin: 0 0 8px 0; font-size: 14px; color: #333; }
+    .probs { display: flex; justify-content: space-around; text-align: center; }
+    .prob { font-size: 20px; font-weight: 700; color: #2563eb; }
+    .prob-label { font-size: 11px; color: #666; }
+    .analysis { padding: 12px; background: #fafafa; border-radius: 6px; font-size: 13px; line-height: 1.5; color: #444; }
+    .footer { padding: 16px; text-align: center; font-size: 11px; color: #999; border-top: 1px solid #eee; }
+    .disclaimer { font-style: italic; margin-bottom: 8px; }
+    .citations { font-size: 10px; color: #aaa; }
+    .citations a { color: #666; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>⚽ World Cup 2026 Pre-Match Briefing</h1>
+      <div class="date">{{ match_date }}</div>
+    </div>
+
+    {% for match in matches %}
+    <div class="match-card">
+      <div class="teams">
+        <div class="team"><span class="team-name">{{ match.home_team }}</span></div>
+        <div class="vs">vs</div>
+        <div class="team"><span class="team-name">{{ match.away_team }}</span></div>
+      </div>
+      <div class="venue">📍 {{ match.venue }}</div>
+
+      {% if match.prediction %}
+      <div class="prediction">
+        <h3>Prediction</h3>
+        <div class="probs">
+          <div><div class="prob">{{ "%.0f"|format(match.prediction.prob_home * 100) }}%</div><div class="prob-label">{{ match.home_team }}</div></div>
+          <div><div class="prob">{{ "%.0f"|format(match.prediction.prob_draw * 100) }}%</div><div class="prob-label">Draw</div></div>
+          <div><div class="prob">{{ "%.0f"|format(match.prediction.prob_away * 100) }}%</div><div class="prob-label">{{ match.away_team }}</div></div>
+        </div>
+      </div>
+      <div class="analysis">{{ match.prediction.analysis }}</div>
+      {% endif %}
+    </div>
+    {% endfor %}
+
+    <div class="footer">
+      <div class="disclaimer">Predictions are AI-generated for informational purposes only. Not gambling advice.</div>
+      <div class="citations">
+        {% for cite in citations %}
+        <a href="{{ cite.url }}">{{ cite.publisher }}</a>{% if not loop.last %} · {% endif %}
+        {% endfor %}
+      </div>
+      <div>Powered by World Cup Intelligence Platform</div>
+    </div>
+  </div>
+</body>
+</html>

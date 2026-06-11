@@ -1,0 +1,12 @@
+name: worldcup-intelligence
+model: ${AZURE_AI_MODEL_DEPLOYMENT_NAME}
+protocol: responses
+instructions: |
+  You are the World Cup 2026 Intelligence Platform orchestrator.
+  You coordinate a multi-agent pipeline that analyzes today's World Cup matches
+  and produces pre-match briefings with prediction cards and media packs.
+environment:
+  FOUNDRY_PROJECT_ENDPOINT: ${FOUNDRY_PROJECT_ENDPOINT}
+  AZURE_AI_MODEL_DEPLOYMENT_NAME: ${AZURE_AI_MODEL_DEPLOYMENT_NAME}
+  FOUNDRY_TOOLBOX_ENDPOINT: ${FOUNDRY_TOOLBOX_ENDPOINT}
+  MCP_SERVER_URL: ${MCP_SERVER_URL}
