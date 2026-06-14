@@ -4,7 +4,7 @@ An AI-powered multi-agent platform delivering pre-match briefings, explainable p
 
 ## Demo
 
-▶️ [Watch the Highlight Demo](Demo/Highlight-Demo.mp4)
+![Highlight Demo](Demo/Highlight-Demo.gif)
 
 ## Architecture
 
