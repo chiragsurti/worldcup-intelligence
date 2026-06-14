@@ -68,6 +68,42 @@ SEED_FIXTURES = [
         "league": "FIFA World Cup 2026",
         "status": "scheduled",
     },
+    {
+        "match_id": "wc2026-007",
+        "match_date": "2026-06-14",
+        "home_team": "Germany",
+        "away_team": "Curaçao",
+        "venue": "Lincoln Financial Field, Philadelphia",
+        "league": "FIFA World Cup 2026",
+        "status": "scheduled",
+    },
+    {
+        "match_id": "wc2026-008",
+        "match_date": "2026-06-14",
+        "home_team": "Ivory Coast",
+        "away_team": "Ecuador",
+        "venue": "Gillette Stadium, Boston",
+        "league": "FIFA World Cup 2026",
+        "status": "scheduled",
+    },
+    {
+        "match_id": "wc2026-009",
+        "match_date": "2026-06-14",
+        "home_team": "Netherlands",
+        "away_team": "Japan",
+        "venue": "MetLife Stadium, New York/New Jersey",
+        "league": "FIFA World Cup 2026",
+        "status": "scheduled",
+    },
+    {
+        "match_id": "wc2026-010",
+        "match_date": "2026-06-14",
+        "home_team": "UEFA Path B Winner",
+        "away_team": "Tunisia",
+        "venue": "BMO Field, Toronto",
+        "league": "FIFA World Cup 2026",
+        "status": "scheduled",
+    },
 ]
 
 

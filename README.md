@@ -263,13 +263,91 @@ graph LR
     ACA_ENV --> APPI
 ```
 
+### Azure AI Foundry — Agent & Toolbox Architecture
+
+```mermaid
+graph TB
+    subgraph USER["Client"]
+        CLIENT["🔌 API Client / Dashboard\nPOST /responses"]
+    end
+
+    subgraph FOUNDRY_PLATFORM["Azure AI Foundry Platform"]
+        direction TB
+
+        subgraph PROJECT["AI Foundry Project (ms-foundry-c)"]
+            direction TB
+            ENDPOINT["🌐 Project Endpoint\nhttps://ms-foundry-c.services.ai.azure.com\n/api/projects/proj-default"]
+
+            subgraph HOSTED_SVC["Foundry Hosted Agent Service"]
+                direction LR
+                RESP["ResponsesHostServer\n(Responses Protocol)\nport 8088"]
+                AGENT_FW["Agent Framework\nWorkflowBuilder\n─────────────\n4-agent pipeline:\nScout → Fact-Checker\n→ Tactician → Scribe"]
+                RESP --> AGENT_FW
+            end
+
+            subgraph MODEL_DEPLOY["Model Deployments"]
+                GPT["🤖 GPT-4.1\nDeployment: gpt-4.1-960518\nAzure OpenAI inference\nAPI Key auth"]
+            end
+
+            subgraph TOOLBOX_SVC["Foundry Toolbox Service"]
+                direction TB
+                TB_EP["📡 Toolbox MCP Endpoint\n/toolboxes/WebsearchToolbox/mcp\n?api-version=v1"]
+                TB_TOOLS["Registered Tools:\n• web_search(query)\n• web_search(query, count)\n• web_search(query, freshness)"]
+                TB_EP --> TB_TOOLS
+            end
+        end
+
+        subgraph BING["Microsoft Bing Infrastructure"]
+            BING_API["🔍 Bing Web Search API\n(Grounded Search)\n─────────────────\n• Real-time web results\n• Inline citations\n• Source URLs + snippets\n• Publisher metadata"]
+        end
+    end
+
+    subgraph CUSTOM_MCP["Custom MCP Server (Container)"]
+        MCP_SRV["FastMCP Server\nport 8000 /mcp\n─────────────\nTools:\n• get_schedule\n• get_historical_trends\n• ground_and_audit_claim\n• save_prediction_card\n• save_media_pack"]
+    end
+
+    CLIENT -->|"POST /responses\nBearer API Key"| RESP
+    AGENT_FW -->|"FoundryChatClient\nchat completions\napi-key header"| GPT
+    AGENT_FW -->|"MCPStreamableHTTPTool\nFOUNDRY_TOOLBOX_ENDPOINT\napi-key header"| TB_EP
+    AGENT_FW -->|"MCPStreamableHTTPTool\nMCP_SERVER_URL\nHTTP POST"| MCP_SRV
+    TB_TOOLS -->|"Platform-managed\nBing Grounding"| BING_API
+
+    style FOUNDRY_PLATFORM fill:#e8f4fd,stroke:#0078d4
+    style PROJECT fill:#f0f8ff,stroke:#0078d4
+    style TOOLBOX_SVC fill:#fff3e0,stroke:#f57c00
+    style BING fill:#e8f5e9,stroke:#388e3c
+    style HOSTED_SVC fill:#ede7f6,stroke:#5e35b1
+    style MODEL_DEPLOY fill:#fce4ec,stroke:#c62828
+```
+
+#### Toolbox Connection Flow
+
+```mermaid
+sequenceDiagram
+    participant Agent as Fact-Checker Agent
+    participant FW as Agent Framework
+    participant TB as Foundry Toolbox<br/>(WebsearchToolbox)
+    participant Bing as Bing Web Search API
+
+    Note over Agent,Bing: FOUNDRY_TOOLBOX_ENDPOINT = .../toolboxes/WebsearchToolbox/mcp?api-version=v1
+
+    Agent->>FW: "Search for Brazil injury news World Cup 2026"
+    FW->>TB: POST /toolboxes/WebsearchToolbox/mcp<br/>Header: api-key: AZURE_AI_KEY<br/>Body: {"method":"tools/call","params":{"name":"web_search","arguments":{"query":"..."}}}
+    TB->>Bing: Bing Grounding API call<br/>(platform-managed, no user Bing key needed)
+    Bing-->>TB: Web results with citations,<br/>snippets, URLs, publish dates
+    TB-->>FW: MCP tool response<br/>{"content":[{"type":"text","text":"...results with citations..."}]}
+    FW-->>Agent: Grounded search results<br/>with inline source citations
+
+    Note over Agent: Agent uses citations to<br/>call ground_and_audit_claim<br/>on custom MCP server
+```
+
 ## Prerequisites
 
 - Python 3.11+
-- Docker & Docker Compose
-- [Azure Developer CLI (`azd`)](https://learn.microsoft.com/azure/developer/azure-developer-cli/)
+- Docker/Podman with Compose support
+- [Azure Developer CLI (`azd`)](https://learn.microsoft.com/azure/developer/azure-developer-cli/) *(for Azure deployment only)*
 - An [API-Football](https://www.api-football.com/) API key
-- Azure AI Foundry project endpoint (for hosted agent & GPT-4o)
+- Azure AI Foundry project endpoint + API key (for hosted agent & GPT-4.1)
 
 ## Quick Start (Local)
 
@@ -287,17 +365,22 @@ graph LR
    # Edit .env and fill in:
    #   FOOTBALL_API_KEY=<your-api-football-key>
    #   FOUNDRY_PROJECT_ENDPOINT=<your-azure-ai-foundry-endpoint>
-   #   AZURE_AI_MODEL_DEPLOYMENT_NAME=gpt-4o
+   #   AZURE_AI_KEY=<your-foundry-api-key>
+   #   AZURE_AI_MODEL_DEPLOYMENT_NAME=gpt-4.1-960518
    #   FOUNDRY_TOOLBOX_ENDPOINT=<optional-toolbox-endpoint>
    ```
 
-3. **Run with Docker Compose**
+3. **Run with Docker Compose or Podman**
 
    ```bash
+   # Docker
    docker-compose up --build
+
+   # Podman (drop-in replacement, no extra config needed)
+   podman compose up --build
    ```
 
-   This starts the PostgreSQL database, MCP server, agent, and dashboard containers.
+   This starts PostgreSQL, MCP server, agent, and dashboard containers.
 
 4. **Access the dashboard**
 
@@ -309,6 +392,13 @@ graph LR
    curl -X POST http://localhost:8088/responses \
      -H "Content-Type: application/json" \
      -d '{"input": "Analyze today'\''s World Cup matches"}'
+   ```
+
+   PowerShell:
+   ```powershell
+   Invoke-RestMethod -Uri "http://localhost:8088/responses" -Method POST `
+     -ContentType "application/json" `
+     -Body '{"input": "Analyze today''s World Cup matches"}'
    ```
 
 ## Deploy to Azure
@@ -342,7 +432,22 @@ This provisions Azure Container Apps, Azure Container Registry, Azure Database f
 | 1 | **Scout** | Fetches fixtures & team metrics via MCP tools |
 | 2 | **Fact-Checker** | Verifies claims using web search & grounding tools |
 | 3 | **Tactician** | Pure LLM reasoning — generates predictions & analysis |
-| 4 | **Scribe** | Produces media packs, email HTML, and social content |
+| 4 | **Scribe** | Premium Sports Journalist — produces campaign-style briefings, media packs, email HTML, and social hype threads |
+
+### Scribe Output Format
+
+The Scribe agent outputs a structured **Campaign Brief** per match:
+
+- 🔥 **Campaign Brief** — match header
+- 📍 **Competition Information** — tournament, stage, venue & atmosphere
+- 📋 **Grounded Team Facts** — verified facts from Scout/Fact-Checker
+- ⚡ **Match Highlights & What's Exciting** — narrative and tactical intrigue
+- ⭐ **Exciting Players to Watch** — stats-backed star player spotlights
+- 🧠 **Match Strategies** — win conditions from Tactician analysis
+- 🔮 **Data-Backed Prediction** — historical context, probabilities, final verdict
+- ⚠️ **Disclaimer** — "Predictions based on current data; football remains unpredictable!"
+
+Media packs include visually compelling HTML emails and a 5-post social hype thread (hook → stat → player → tactics → prediction).
 
 ## Running Tests
 
@@ -351,6 +456,65 @@ pip install -r mcp_server/requirements.txt
 pip install pytest
 pytest tests/
 ```
+
+## Utility Scripts
+
+### Data Cleanup
+
+Remove persisted data from PostgreSQL:
+
+```bash
+# Delete all data for a specific date
+python scripts/cleanup_date.py 2026-06-14
+
+# Delete ALL data (fixtures, predictions, media packs, audit claims)
+python scripts/cleanup_date.py --all
+```
+
+### Wikipedia Data Sync
+
+```bash
+python scripts/sync_wikipedia_data.py
+```
+
+## Data Sources & Wikipedia Sync
+
+The platform uses a multi-layered data strategy to ensure reliable operation even before the World Cup 2026 officially starts:
+
+### Primary: API-Football v3 (Free Tier)
+
+Live match data is fetched from [API-Football v3](https://www.api-football.com/) (`v3.football.api-sports.io`) using the World Cup league ID (`1`) and season `2026`. The platform uses the **free tier** subscription, which has the following limitations:
+
+- **100 requests/day** rate limit
+- Limited historical data depth
+- No real-time lineups or live match events
+- Delayed data updates compared to paid tiers
+
+Due to these constraints, the platform relies heavily on pre-ingested fallback data to ensure consistent, rich analysis regardless of API availability.
+
+### Fallback: Pre-Ingested Data from Wikipedia & Other Sources
+
+To compensate for free-tier API limitations, the platform includes comprehensive pre-seeded CSV/JSON files in the `data/` directory, ingested from Wikipedia's [2026 FIFA World Cup](https://en.wikipedia.org/wiki/2026_FIFA_World_Cup) article, related pages, and other publicly available sources:
+
+| File | Source | Contents |
+|------|--------|----------|
+| `worldcup2026.teams.csv` | Wikipedia team lists | 48 qualified teams with FIFA codes, ISO2 country codes, group assignments, and flag image URLs from Wikimedia Commons |
+| `worldcup2026.games.csv` | Wikipedia match schedule | Full group stage fixture list with match dates, team IDs, stadium IDs, and kickoff times |
+| `worldcup2026.stadia.csv` | Wikipedia venue articles | 16 host stadiums with city, country, capacity, and region |
+| `worldcup2026.groups.csv` | Wikipedia group draw | Group compositions (A–L) with team assignments |
+| `worldcup2026.groups.json` | Wikipedia group draw | Same as above in JSON format for programmatic access |
+| `worldcup2026.players.json` | Wikipedia squad lists | Player data (name, position, club) for each national team |
+| `worldcup2026.team_stats.json` | Wikipedia + historical data | Pre-tournament team statistics and performance metrics |
+
+### Fallback Resolution Logic
+
+The `FootballAPIClient` in `mcp_server/clients/football_api.py` implements automatic fallback to handle free-tier limitations gracefully:
+
+1. Query API-Football for the requested data
+2. If the API returns empty results, HTTP 429 (rate limit exceeded), or the daily quota is exhausted, load equivalent data from the local CSV/JSON files via `mcp_server/clients/fallback_data.py`
+3. If no local files exist, use hardcoded seed fixtures for key match dates
+
+This ensures the agent pipeline always has rich, complete data to work with — regardless of API-Football free-tier availability, rate limits, or whether the tournament has officially started. The ingested Wikipedia and public-source data provides the same level of detail (teams, squads, venues, historical stats) that a paid API tier would offer.
 
 ## License
 

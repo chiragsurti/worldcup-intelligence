@@ -28,10 +28,11 @@ services:
       postgres:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "python", "-c", "import httpx; httpx.get('http://localhost:8000/mcp/')"]
-      interval: 10s
-      timeout: 5s
-      retries: 3
+      test: ["CMD-SHELL", "python -c 'import socket; s=socket.create_connection((\"localhost\",8000),2); s.close()'"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
 
   agent:
     build:
@@ -42,8 +43,9 @@ services:
     environment:
       - FOUNDRY_PROJECT_ENDPOINT=${FOUNDRY_PROJECT_ENDPOINT:-}
       - AZURE_AI_MODEL_DEPLOYMENT_NAME=${AZURE_AI_MODEL_DEPLOYMENT_NAME:-gpt-4o}
+      - AZURE_AI_KEY=${AZURE_AI_KEY:-}
       - FOUNDRY_TOOLBOX_ENDPOINT=${FOUNDRY_TOOLBOX_ENDPOINT:-}
-      - MCP_SERVER_URL=http://mcp-server:8000/mcp/
+      - MCP_SERVER_URL=http://mcp-server:8000/mcp
     depends_on:
       mcp-server:
         condition: service_healthy

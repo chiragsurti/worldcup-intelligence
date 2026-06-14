@@ -158,7 +158,30 @@ async def tool_get_prediction_cards(date: str) -> str:
 
 
 if __name__ == "__main__":
+    import uvicorn
+    from starlette.middleware import Middleware
+    from starlette.types import ASGIApp, Receive, Scope, Send
+
+    class HostRewriteMiddleware:
+        """Rewrite Host header to localhost for internal container networking."""
+
+        def __init__(self, app: ASGIApp):
+            self.app = app
+
+        async def __call__(self, scope: Scope, receive: Receive, send: Send):
+            if scope["type"] in ("http", "websocket"):
+                headers = dict(scope.get("headers", []))
+                # Replace host header with localhost
+                new_headers = [
+                    (k, b"localhost:8000") if k == b"host" else (k, v)
+                    for k, v in scope.get("headers", [])
+                ]
+                scope["headers"] = new_headers
+            await self.app(scope, receive, send)
+
     # Initialize database tables
     init_db()
     logger.info("Database initialized. Starting MCP server on port 8000...")
-    mcp.run(transport="streamable-http", host="0.0.0.0", port=8000)
+    app = mcp.streamable_http_app()
+    app.add_middleware(HostRewriteMiddleware)
+    uvicorn.run(app, host="0.0.0.0", port=8000)

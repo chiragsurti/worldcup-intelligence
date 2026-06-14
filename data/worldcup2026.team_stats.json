@@ -1,0 +1,122 @@
+[
+  {
+    "team": "Mexico",
+    "team_id": 1,
+    "matches_played": 1,
+    "wins": 1,
+    "draws": 0,
+    "losses": 0,
+    "goals_for": 2,
+    "goals_against": 0,
+    "goal_difference": 2,
+    "form": "W"
+  },
+  {
+    "team": "South Africa",
+    "team_id": 2,
+    "matches_played": 1,
+    "wins": 0,
+    "draws": 0,
+    "losses": 1,
+    "goals_for": 0,
+    "goals_against": 2,
+    "goal_difference": -2,
+    "form": "L"
+  },
+  {
+    "team": "South Korea",
+    "team_id": 3,
+    "matches_played": 1,
+    "wins": 1,
+    "draws": 0,
+    "losses": 0,
+    "goals_for": 2,
+    "goals_against": 1,
+    "goal_difference": 1,
+    "form": "W"
+  },
+  {
+    "team": "Czech Republic",
+    "team_id": 4,
+    "matches_played": 1,
+    "wins": 0,
+    "draws": 0,
+    "losses": 1,
+    "goals_for": 1,
+    "goals_against": 2,
+    "goal_difference": -1,
+    "form": "L"
+  },
+  {
+    "team": "Canada",
+    "team_id": 5,
+    "matches_played": 1,
+    "wins": 0,
+    "draws": 1,
+    "losses": 0,
+    "goals_for": 1,
+    "goals_against": 1,
+    "goal_difference": 0,
+    "form": "D"
+  },
+  {
+    "team": "Bosnia and Herzegovina",
+    "team_id": 6,
+    "matches_played": 1,
+    "wins": 0,
+    "draws": 1,
+    "losses": 0,
+    "goals_for": 1,
+    "goals_against": 1,
+    "goal_difference": 0,
+    "form": "D"
+  },
+  {
+    "team": "Qatar",
+    "team_id": 7,
+    "matches_played": 1,
+    "wins": 0,
+    "draws": 1,
+    "losses": 0,
+    "goals_for": 1,
+    "goals_against": 1,
+    "goal_difference": 0,
+    "form": "D"
+  },
+  {
+    "team": "Switzerland",
+    "team_id": 8,
+    "matches_played": 1,
+    "wins": 0,
+    "draws": 1,
+    "losses": 0,
+    "goals_for": 1,
+    "goals_against": 1,
+    "goal_difference": 0,
+    "form": "D"
+  },
+  {
+    "team": "United States",
+    "team_id": 13,
+    "matches_played": 1,
+    "wins": 1,
+    "draws": 0,
+    "losses": 0,
+    "goals_for": 4,
+    "goals_against": 1,
+    "goal_difference": 3,
+    "form": "W"
+  },
+  {
+    "team": "Paraguay",
+    "team_id": 14,
+    "matches_played": 1,
+    "wins": 0,
+    "draws": 0,
+    "losses": 1,
+    "goals_for": 1,
+    "goals_against": 4,
+    "goal_difference": -3,
+    "form": "L"
+  }
+]

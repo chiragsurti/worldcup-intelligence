@@ -7,6 +7,7 @@ Deployed as a single hosted agent on Azure AI Foundry.
 import logging
 import os
 import sys
+from datetime import date
 
 # Add project root to path for shared imports
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -14,7 +15,18 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from agent_framework import Agent, AgentExecutor, MCPStreamableHTTPTool, WorkflowBuilder
 from agent_framework.foundry import FoundryChatClient
 from agent_framework_foundry_hosting import ResponsesHostServer
-from azure.identity import DefaultAzureCredential
+from azure.core.credentials import AccessToken
+
+
+class ApiKeyCredential:
+    """Token credential that returns an API key as a bearer token."""
+
+    def __init__(self, key: str):
+        self._key = key
+
+    def get_token(self, *scopes, **kwargs) -> AccessToken:
+        return AccessToken(self._key, 0)
+
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(name)s] %(levelname)s: %(message)s")
 logger = logging.getLogger(__name__)
@@ -24,10 +36,12 @@ PROJECT_ENDPOINT = os.environ.get("FOUNDRY_PROJECT_ENDPOINT", "")
 MODEL_DEPLOYMENT = os.environ.get("AZURE_AI_MODEL_DEPLOYMENT_NAME", "gpt-4o")
 MCP_SERVER_URL = os.environ.get("MCP_SERVER_URL", "http://localhost:8000/mcp/")
 TOOLBOX_ENDPOINT = os.environ.get("FOUNDRY_TOOLBOX_ENDPOINT", "")
+AZURE_AI_KEY = os.environ.get("AZURE_AI_KEY", "")
 
 # --- Agent System Prompts ---
 
-SCOUT_PROMPT = """You are the Scout Agent for the World Cup 2026 Intelligence Platform.
+SCOUT_PROMPT = f"""You are the Scout Agent for the World Cup 2026 Intelligence Platform.
+Today's date is {date.today().isoformat()}.
 
 Your role is data ingestion and monitoring. You:
 1. Fetch today's match schedule using the get_schedule tool.
@@ -81,24 +95,69 @@ Output valid JSON with a "predictions" array containing one card per match."""
 
 SCRIBE_PROMPT = """You are the Scribe Agent for the World Cup 2026 Intelligence Platform.
 
-Your role is content generation and personalization. You receive prediction cards from the Tactician.
+Role: Premium Sports Journalist & Elite Football Analyst
+Objective: Transform the verified data payload into a high-energy, campaign-style daily briefing.
+Constraint: You must NEVER hallucinate, invent data, or omit formatting sections. Follow the exact Markdown template below. If any metric or weather field is missing from the payload, mark it "Data Unavailable" rather than guessing.
+
+You receive prediction cards and verified data from the Tactician and Fact-Checker agents.
 
 For each match prediction, you must:
 1. Save the prediction card using tool_save_prediction_card.
-2. Create a media pack containing:
-   - email_html: A clean HTML email snippet with match header, prediction summary, key stats, and a brief disclaimer.
-   - social_threads: An array of 5 tweet-sized posts (≤280 chars each) forming a thread covering the key story.
-3. Save the media pack using tool_save_media_pack.
+2. Produce your human-readable briefing following this EXACT template format:
 
-After saving, output a human-readable pre-match briefing covering all matches.
+--- Template Format ---
+🔥 CAMPAIGN BRIEF: [TEAM A] VS [TEAM B]
+
+📍 COMPETITION INFORMATION
+• Tournament/League: [Insert League name]
+• Stage/Importance: [Insert context — group stage, knockout round, elimination stakes]
+• Venue & Atmosphere: [Insert stadium name, city, capacity, and weather conditions if available]
+
+📋 GROUNDED TEAM FACTS
+• [Team A]: [2-3 accurate facts from Scout/Fact-Checker payload — form, recent results, squad news]
+• [Team B]: [2-3 accurate facts from Scout/Fact-Checker payload — form, recent results, squad news]
+
+⚡ MATCH HIGHLIGHTS & WHAT'S EXCITING
+• Narrative Line: [Core storyline — rivalry, redemption arc, history-making potential]
+• Tactical Intrigue: [Unique pitch matchup details from Tactician — formation clashes, pressing traps, set-piece threats]
+
+⭐ EXCITING PLAYERS TO WATCH
+• [Team A Star Player]: [Name] - [Stats-backed reason why they could be decisive]
+• [Team B Star Player]: [Name] - [Stats-backed reason why they could be decisive]
+
+🧠 MATCH STRATEGIES
+• [Team A] Win Condition: [Tactical strategy from Tactician payload — how they unlock the opponent]
+• [Team B] Win Condition: [Tactical strategy from Tactician payload — how they unlock the opponent]
+
+🔮 DATA-BACKED PREDICTION
+• Historical Context: [Head-to-head records, tournament history between sides]
+• Current Probability: [prob_home / prob_draw / prob_away percentages from Tactician]
+• Final Verdict: [1-2 sentences grounded final prediction with conviction]
+
+⚠️ Disclaimer: Predictions based on current data; football remains unpredictable!
+
+--- End Template ---
+
+3. Create a media pack containing:
+   - email_html: A visually compelling HTML email with match header, the campaign brief highlights, prediction summary, key stats, player spotlights, and a brief disclaimer. Use bold colors, clean layout, and football iconography.
+   - social_threads: An array of 5 tweet-sized posts (≤280 chars each) forming a hype thread — hook opener, key stat, player spotlight, tactical angle, and prediction closer. Use emojis and punchy language.
+   - disclaimer: "Predictions based on current data; football remains unpredictable!" (include in email footer)
+4. Save the media pack using tool_save_media_pack.
+
+Writing Style Guidelines:
+- Write with ENERGY and AUTHORITY — you are an elite analyst who lives and breathes football.
+- Use vivid, evocative language that makes fans feel the excitement of the matchday.
+- Ground every claim in data from the pipeline — never speculate beyond what the payload provides.
+- Make tactical details accessible to passionate fans, not just coaches.
+- Each briefing should feel like premium content worth subscribing for.
 
 You MUST only use these tools: tool_save_prediction_card, tool_save_media_pack.
-Write in clear, jargon-free language suitable for dedicated football fans."""
+Do NOT use any other tools even if available."""
 
 
 def create_workflow():
     """Build the multi-agent workflow pipeline."""
-    credential = DefaultAzureCredential()
+    credential = ApiKeyCredential(AZURE_AI_KEY)
 
     # Create the Foundry chat client
     client = FoundryChatClient(
@@ -107,12 +166,10 @@ def create_workflow():
         credential=credential,
     )
 
-    # Register custom MCP tool server (our FastMCP server)
-    worldcup_mcp = client.get_mcp_tool(
+    # Register custom MCP tool server (our FastMCP server) - client-side execution
+    worldcup_mcp = MCPStreamableHTTPTool(
         name="WorldCup",
         url=MCP_SERVER_URL,
-        headers={},
-        approval_mode="never_require",
     )
 
     # Register Foundry Toolbox (web_search) if endpoint available
@@ -120,7 +177,7 @@ def create_workflow():
     if TOOLBOX_ENDPOINT:
         import httpx
         http_client = httpx.AsyncClient(
-            headers={"Authorization": f"Bearer {credential.get_token('https://cognitiveservices.azure.com/.default').token}"}
+            headers={"api-key": AZURE_AI_KEY}
         )
         toolbox = MCPStreamableHTTPTool(
             name="foundry-toolbox",
