@@ -2,6 +2,10 @@
 
 An AI-powered multi-agent platform delivering pre-match briefings, explainable prediction cards, audit-grounded fact checks, and media packs for the FIFA World Cup 2026.
 
+## Demo
+
+▶️ [Watch the Highlight Demo](Demo/Highlight-Demo.mp4)
+
 ## Architecture
 
 A collaborative multi-agent pipeline — **Scout → Fact-Checker → Tactician → Scribe** — runs as a single Microsoft Foundry Hosted Agent using the Agent Framework `WorkflowBuilder` pattern, backed by a dedicated MCP tool server and a Streamlit analytics dashboard.
