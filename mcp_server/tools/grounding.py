@@ -10,7 +10,6 @@ from shared.db.models import AuditClaim
 logger = logging.getLogger(__name__)
 
 VALID_STATUS_LABELS = {"Confirmed", "Reported", "Unverified"}
-REQUIRED_CITATION_FIELDS = {"url", "title", "publisher", "publish_time", "quote_snippet"}
 
 
 async def ground_and_audit_claim(
@@ -34,34 +33,41 @@ async def ground_and_audit_claim(
     Returns:
         JSON string with the saved audit record ID and status.
     """
-    # Validate status label
+    # Validate status label — default to Unverified if invalid
     if status_label not in VALID_STATUS_LABELS:
-        return json.dumps({
-            "error": f"Invalid status_label '{status_label}'. Must be one of: {VALID_STATUS_LABELS}"
-        })
+        logger.warning(f"Invalid status_label '{status_label}', defaulting to 'Unverified'")
+        status_label = "Unverified"
 
-    # Validate confidence score
-    if not (0.0 <= confidence_score <= 1.0):
-        return json.dumps({
-            "error": f"confidence_score must be between 0.0 and 1.0, got {confidence_score}"
-        })
+    # Validate confidence score — clamp to valid range
+    if not isinstance(confidence_score, (int, float)):
+        confidence_score = 0.5
+    confidence_score = max(0.0, min(1.0, confidence_score))
 
-    # Validate citation schema
-    validation_errors = []
-    for i, citation in enumerate(citations):
-        missing = REQUIRED_CITATION_FIELDS - set(citation.keys())
-        if missing:
-            validation_errors.append(f"Citation[{i}] missing fields: {missing}")
+    # Ensure citations is a list
+    if not isinstance(citations, list):
+        citations = [] if citations is None else [citations]
 
-    if validation_errors:
-        return json.dumps({"error": "Citation validation failed", "details": validation_errors})
+    # Normalize citations — fill missing fields with defaults instead of rejecting
+    normalized_citations = []
+    for citation in citations:
+        if not isinstance(citation, dict):
+            citation = {"url": str(citation)}
+        normalized = {
+            "url": citation.get("url", ""),
+            "title": citation.get("title", ""),
+            "publisher": citation.get("publisher", "unknown"),
+            "publish_time": citation.get("publish_time", ""),
+            "quote_snippet": citation.get("quote_snippet", ""),
+        }
+        normalized_citations.append(normalized)
+    citations = normalized_citations
 
     # Persist to database
     with get_session() as session:
         claim = AuditClaim(
-            match_id=match_id,
+            match_id=match_id or "unknown",
             claim_text=claim_text,
-            entity_mappings=json.dumps(entity_mappings),
+            entity_mappings=json.dumps(entity_mappings if isinstance(entity_mappings, dict) else {}),
             status_label=status_label,
             confidence_score=confidence_score,
             citations=json.dumps(citations),

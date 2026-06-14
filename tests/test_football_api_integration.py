@@ -285,9 +285,9 @@ async def test_get_fixtures_response_schema(client: FootballAPIClient):
 
 
 async def test_get_fixtures_alternate_date(client: FootballAPIClient):
-    """Validate /fixtures with date=2026-06-12 returns fixtures."""
-    _print_section(f"GET /fixtures?date=2026-06-12&league={WORLD_CUP_LEAGUE_ID}&season={WORLD_CUP_SEASON}")
-    fixtures = await client.get_fixtures("2026-06-12")
+    """Validate /fixtures with date=2026-06-14 returns fixtures."""
+    _print_section(f"GET /fixtures?date=2026-06-14&league={WORLD_CUP_LEAGUE_ID}&season={WORLD_CUP_SEASON}")
+    fixtures = await client.get_fixtures("2026-06-14")
 
     assert isinstance(fixtures, list)
     print(f"  Fixtures returned: {len(fixtures)}")
@@ -304,7 +304,7 @@ async def test_get_fixtures_alternate_date(client: FootballAPIClient):
         assert "fixture" in fixtures[0]
         assert "teams" in fixtures[0]
     else:
-        print("  *** No fixtures found for 2026-06-12 â€” check data files ***")
+        print("  *** No fixtures found for 2026-06-14 â€” check data files ***")
 
 
 # ---------------------------------------------------------------------------

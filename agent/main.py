@@ -91,7 +91,28 @@ Base your analysis on:
 - Head-to-head record implications
 
 You have NO external tools. Work purely from the context provided.
-Output valid JSON with a "predictions" array containing one card per match."""
+Output valid JSON with a "predictions" array containing one card per match.
+
+Each prediction card MUST include these fields:
+- match_id: the NUMERIC match_id string from the schedule (e.g. "11", NOT team names)
+- home_team: team name
+- away_team: team name
+- venue: stadium and city from the schedule
+- league: tournament name (e.g. "FIFA World Cup 2026")
+- round: group info (e.g. "Group F - 1")
+- prob_home, prob_draw, prob_away: probabilities
+- analysis: tactical summary
+- reasoning: step-by-step reasoning
+- home_key_players: array of {name, position, club, caps, goals} from trends data
+- away_key_players: array of {name, position, club, caps, goals} from trends data
+- home_form: qualification form string
+- away_form: qualification form string
+- home_fifa_ranking: number
+- away_fifa_ranking: number
+- home_key_strength: string
+- away_key_strength: string
+
+This is CRITICAL: the Scribe agent only sees YOUR output and needs all this data."""
 
 SCRIBE_PROMPT = """You are the Scribe Agent for the World Cup 2026 Intelligence Platform.
 
@@ -101,9 +122,30 @@ Constraint: You must NEVER hallucinate, invent data, or omit formatting sections
 
 You receive prediction cards and verified data from the Tactician and Fact-Checker agents.
 
-For each match prediction, you must:
-1. Save the prediction card using tool_save_prediction_card.
-2. Produce your human-readable briefing following this EXACT template format:
+CRITICAL WORKFLOW ORDER — you MUST follow these steps in exact sequence:
+
+STEP 1: Save ALL prediction cards FIRST.
+- Loop through EVERY match in the Tactician payload.
+- Call tool_save_prediction_card for EACH match before doing anything else.
+- Use the NUMERIC match_id from the Tactician's prediction cards (e.g. "9", "10", "11", "12"). NEVER use team names as match_id.
+- Do NOT generate any briefing text until ALL prediction cards are saved.
+
+STEP 2: For each match, produce the media pack and save it.
+- Generate the briefing, email HTML, and social threads.
+- Call tool_save_media_pack with the NUMERIC match_id (same as used for prediction card).
+- Use venue, league, round, key_players, form, fifa_ranking, and key_strength data FROM the Tactician's output.
+- Then move on to the next match.
+
+DATA SOURCES (all from the Tactician's predictions JSON in your context):
+- match_id, venue, league, round: fixture details
+- home_key_players / away_key_players: player arrays with name, position, club, caps, goals
+- home_form / away_form: qualification form strings
+- home_fifa_ranking / away_fifa_ranking: FIFA ranking numbers
+- home_key_strength / away_key_strength: tactical strengths
+- prob_home, prob_draw, prob_away: prediction probabilities
+- analysis, reasoning: tactical analysis
+
+For each match briefing, follow this EXACT template format:
 
 --- Template Format ---
 🔥 CAMPAIGN BRIEF: [TEAM A] VS [TEAM B]
@@ -139,10 +181,22 @@ For each match prediction, you must:
 --- End Template ---
 
 3. Create a media pack containing:
-   - email_html: A visually compelling HTML email with match header, the campaign brief highlights, prediction summary, key stats, player spotlights, and a brief disclaimer. Use bold colors, clean layout, and football iconography.
    - social_threads: An array of 5 tweet-sized posts (≤280 chars each) forming a hype thread — hook opener, key stat, player spotlight, tactical angle, and prediction closer. Use emojis and punchy language.
-   - disclaimer: "Predictions based on current data; football remains unpredictable!" (include in email footer)
-4. Save the media pack using tool_save_media_pack.
+4. Save the media pack using tool_save_media_pack with STRUCTURED DATA parameters:
+   - match_id: numeric string (e.g. "11")
+   - home_team: team name
+   - away_team: team name
+   - venue: stadium and city
+   - match_date: date string (e.g. "2026-06-14")
+   - prob_home: float (0.0–1.0)
+   - prob_draw: float (0.0–1.0)
+   - prob_away: float (0.0–1.0)
+   - analysis: your campaign brief text (the full briefing from the template above)
+   - social_threads_json: a JSON-encoded string array of 5 tweet-sized strings (e.g. '["post1", "post2", ...]')
+
+   NOTE: The email HTML is rendered server-side from a professional template using the data you provide. Do NOT pass raw HTML — pass the structured fields above.
+
+REMINDER: You MUST save prediction cards for ALL matches in Step 1 before generating any media packs in Step 2.
 
 Writing Style Guidelines:
 - Write with ENERGY and AUTHORITY — you are an elite analyst who lives and breathes football.
@@ -211,7 +265,7 @@ def create_workflow():
         tools=[worldcup_mcp],
     )
 
-    # Create executors with context_mode="last_agent"
+    # Create executors with context_mode="last_agent" ("all" causes framework 400 errors)
     scout_executor = AgentExecutor(scout_agent, context_mode="last_agent")
     fc_executor = AgentExecutor(factchecker_agent, context_mode="last_agent")
     tac_executor = AgentExecutor(tactician_agent, context_mode="last_agent")

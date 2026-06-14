@@ -44,17 +44,18 @@ async def tool_get_schedule(date: str) -> str:
 
 
 @mcp.tool()
-async def tool_get_historical_trends(team_id: int, player_id: int | None = None) -> str:
+async def tool_get_historical_trends(team_id: int = 0, team_name: str | None = None, player_id: int | None = None) -> str:
     """Get historical performance trends for a team and optionally a player.
 
     Args:
-        team_id: API-Football team ID.
+        team_id: Team ID from the schedule response (e.g., home_team_id or away_team_id).
+        team_name: Team name (alternative to team_id — will resolve automatically).
         player_id: Optional API-Football player ID.
 
     Returns:
         JSON with rolling metrics (form, goals, clean sheets, etc.).
     """
-    return await get_historical_trends(team_id, player_id)
+    return await get_historical_trends(team_id, team_name, player_id)
 
 
 @mcp.tool()
@@ -124,23 +125,46 @@ async def tool_save_prediction_card(
 @mcp.tool()
 async def tool_save_media_pack(
     match_id: str,
-    email_html: str,
-    social_threads: list[str],
+    home_team: str,
+    away_team: str,
+    venue: str,
+    match_date: str,
+    prob_home: float,
+    prob_draw: float,
+    prob_away: float,
+    analysis: str,
+    social_threads_json: str,
 ) -> str:
-    """Save a media pack with email HTML and social media thread posts.
+    """Save a media pack for a match. The email HTML is rendered from a professional template using the data provided.
 
     Args:
-        match_id: Fixture match_id.
-        email_html: Full rendered HTML email content.
-        social_threads: Array of social media post strings (e.g., 5-tweet thread).
+        match_id: Fixture match_id (numeric string, e.g. "11").
+        home_team: Home team name.
+        away_team: Away team name.
+        venue: Stadium and city.
+        match_date: Date string (e.g. "2026-06-14").
+        prob_home: Home win probability (0.0-1.0).
+        prob_draw: Draw probability (0.0-1.0).
+        prob_away: Away win probability (0.0-1.0).
+        analysis: Match analysis/briefing text.
+        social_threads_json: JSON array string of social media posts (e.g. '["post1", "post2"]').
 
     Returns:
         JSON with saved media pack ID.
     """
+    import json as _json
+    threads = _json.loads(social_threads_json)
     return await save_media_pack(
         match_id=match_id,
-        email_html=email_html,
-        social_threads=social_threads,
+        home_team=home_team,
+        away_team=away_team,
+        venue=venue,
+        match_date=match_date,
+        prob_home=prob_home,
+        prob_draw=prob_draw,
+        prob_away=prob_away,
+        analysis=analysis,
+        social_threads=threads,
     )
 
 

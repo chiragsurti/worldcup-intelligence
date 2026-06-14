@@ -11,8 +11,8 @@ from datetime import datetime
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from shared.db.database import get_session
-from shared.db.models import AuditClaim, Fixture, MediaPack, PredictionCard
+from shared.db.database import get_engine, get_session, init_db
+from shared.db.models import AuditClaim, Base, Fixture, MediaPack, PredictionCard
 
 
 def cleanup_all():
@@ -36,6 +36,8 @@ def cleanup_all():
 def cleanup_date(date_str: str):
     """Delete all records associated with fixtures on the given date."""
     target_date = datetime.strptime(date_str, "%Y-%m-%d").date()
+    target_start = datetime(target_date.year, target_date.month, target_date.day)
+    target_end = datetime(target_date.year, target_date.month, target_date.day, 23, 59, 59)
 
     with get_session() as session:
         # Find all match_ids for the target date
@@ -43,19 +45,39 @@ def cleanup_date(date_str: str):
         match_ids = [f.match_id for f in fixtures]
 
         if not match_ids:
-            print(f"No fixtures found for {date_str}. Nothing to delete.")
-            return
+            print(f"No fixtures found for {date_str}. Cleaning by created_at date only.")
+        else:
+            print(f"Found {len(match_ids)} fixture(s) for {date_str}: {match_ids}")
 
-        print(f"Found {len(match_ids)} fixture(s) for {date_str}: {match_ids}")
-
-        # Delete related records
-        claims_deleted = session.query(AuditClaim).filter(AuditClaim.match_id.in_(match_ids)).delete(synchronize_session="fetch")
+        # Delete related records by match_id OR by created_at date
+        if match_ids:
+            claims_deleted = session.query(AuditClaim).filter(
+                (AuditClaim.match_id.in_(match_ids)) | (AuditClaim.created_at.between(target_start, target_end))
+            ).delete(synchronize_session="fetch")
+        else:
+            claims_deleted = session.query(AuditClaim).filter(
+                AuditClaim.created_at.between(target_start, target_end)
+            ).delete(synchronize_session="fetch")
         print(f"  Deleted {claims_deleted} audit claim(s)")
 
-        predictions_deleted = session.query(PredictionCard).filter(PredictionCard.match_id.in_(match_ids)).delete(synchronize_session="fetch")
+        if match_ids:
+            predictions_deleted = session.query(PredictionCard).filter(
+                (PredictionCard.match_id.in_(match_ids)) | (PredictionCard.created_at.between(target_start, target_end))
+            ).delete(synchronize_session="fetch")
+        else:
+            predictions_deleted = session.query(PredictionCard).filter(
+                PredictionCard.created_at.between(target_start, target_end)
+            ).delete(synchronize_session="fetch")
         print(f"  Deleted {predictions_deleted} prediction card(s)")
 
-        media_deleted = session.query(MediaPack).filter(MediaPack.match_id.in_(match_ids)).delete(synchronize_session="fetch")
+        if match_ids:
+            media_deleted = session.query(MediaPack).filter(
+                (MediaPack.match_id.in_(match_ids)) | (MediaPack.created_at.between(target_start, target_end))
+            ).delete(synchronize_session="fetch")
+        else:
+            media_deleted = session.query(MediaPack).filter(
+                MediaPack.created_at.between(target_start, target_end)
+            ).delete(synchronize_session="fetch")
         print(f"  Deleted {media_deleted} media pack(s)")
 
         fixtures_deleted = session.query(Fixture).filter(Fixture.match_date == target_date).delete(synchronize_session="fetch")
@@ -73,4 +95,6 @@ if __name__ == "__main__":
     if sys.argv[1] == "--all":
         cleanup_all()
     else:
+        # Ensure DB schema is up to date before running
+        init_db()
         cleanup_date(sys.argv[1])

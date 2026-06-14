@@ -382,6 +382,28 @@ sequenceDiagram
 
    This starts PostgreSQL, MCP server, agent, and dashboard containers.
 
+   **Rebuild a single service after code changes:**
+
+   ```bash
+   # Rebuild and restart only the changed component (e.g. mcp-server)
+   podman compose up --build mcp-server
+
+   # Rebuild and restart the agent
+   podman compose up --build agent
+
+   # Rebuild and restart the dashboard
+   podman compose up --build dashboard
+
+   # Rebuild multiple changed services at once
+   podman compose up --build mcp-server agent
+   ```
+
+   Add `-d` to run in detached mode (background):
+
+   ```bash
+   podman compose up --build -d mcp-server
+   ```
+
 4. **Access the dashboard**
 
    Open [http://localhost:8501](http://localhost:8501) in your browser.

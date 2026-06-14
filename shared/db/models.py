@@ -19,6 +19,8 @@ class Fixture(Base):
     match_date = Column(Date, nullable=False, index=True)
     home_team = Column(String, nullable=False)
     away_team = Column(String, nullable=False)
+    home_team_id = Column(Integer, nullable=True)
+    away_team_id = Column(Integer, nullable=True)
     venue = Column(String, nullable=True)
     league = Column(String, default="FIFA World Cup 2026")
     status = Column(String, default="scheduled")
@@ -31,6 +33,8 @@ class Fixture(Base):
             "match_date": str(self.match_date),
             "home_team": self.home_team,
             "away_team": self.away_team,
+            "home_team_id": self.home_team_id,
+            "away_team_id": self.away_team_id,
             "venue": self.venue,
             "league": self.league,
             "status": self.status,

@@ -49,6 +49,21 @@ def get_session(database_url: str | None = None):
 
 
 def init_db(database_url: str | None = None):
-    """Create all tables if they don't exist."""
+    """Create all tables if they don't exist, and add any missing columns."""
+    from sqlalchemy import inspect, text
+
     engine = get_engine(database_url)
     Base.metadata.create_all(bind=engine)
+
+    # Add missing columns to existing tables
+    inspector = inspect(engine)
+    with engine.begin() as conn:
+        for table_name, table in Base.metadata.tables.items():
+            if inspector.has_table(table_name):
+                existing_cols = {c["name"] for c in inspector.get_columns(table_name)}
+                for col in table.columns:
+                    if col.name not in existing_cols:
+                        col_type = col.type.compile(engine.dialect)
+                        conn.execute(text(
+                            f"ALTER TABLE {table_name} ADD COLUMN IF NOT EXISTS {col.name} {col_type}"
+                        ))

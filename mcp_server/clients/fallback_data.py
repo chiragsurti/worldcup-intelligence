@@ -317,15 +317,15 @@ def get_fallback_team_stats(team_id: int) -> dict:
             "form": "",
         }
 
-    mp = stats["matches_played"]
-    wins = stats["wins"]
-    draws = stats["draws"]
-    losses = stats["losses"]
-    gf = stats["goals_for"]
-    ga = stats["goals_against"]
-    form = stats.get("form", "")
+    mp = stats.get("matches_played", 0)
+    wins = stats.get("wins", 0)
+    draws = stats.get("draws", 0)
+    losses = stats.get("losses", 0)
+    gf = stats.get("goals_for", 0)
+    ga = stats.get("goals_against", 0)
+    form = stats.get("form", "") or stats.get("qualification_form", "")
 
-    return {
+    result = {
         "league": {
             "id": 1,
             "name": "World Cup",
@@ -363,6 +363,39 @@ def get_fallback_team_stats(team_id: int) -> dict:
             "total": 0,
         },
     }
+
+    # Add pre-tournament metadata if available
+    if stats.get("qualification_form"):
+        result["qualification_form"] = stats["qualification_form"]
+    if stats.get("fifa_ranking"):
+        result["fifa_ranking"] = stats["fifa_ranking"]
+    if stats.get("world_cup_titles"):
+        result["world_cup_titles"] = stats["world_cup_titles"]
+    if stats.get("world_cup_finals"):
+        result["world_cup_finals"] = stats["world_cup_finals"]
+    if stats.get("key_strength"):
+        result["key_strength"] = stats["key_strength"]
+
+    return result
+
+
+def get_fallback_team_players(team_id: int) -> list[dict]:
+    """Get key players for a team from local JSON data.
+
+    Args:
+        team_id: Numeric team ID matching worldcup2026.teams.csv.
+
+    Returns:
+        List of player dicts with name, position, caps, goals, club.
+    """
+    players_data = _load_json("worldcup2026.players.json")
+    if not players_data:
+        return []
+
+    team_players = [p for p in players_data if p.get("team_id") == team_id]
+    # Sort by goals desc, then caps desc to surface star players first
+    team_players.sort(key=lambda p: (-p.get("goals", 0), -p.get("caps", 0)))
+    return team_players
 
 
 def get_fallback_player_stats(player_id: int) -> list[dict]:
